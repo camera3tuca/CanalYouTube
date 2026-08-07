@@ -15,7 +15,17 @@ from pathlib import Path
 
 import streamlit as st
 
-from canal import assemble, config, narrate, news, seo, sources, thumbnail, youtube
+from canal import (
+    assemble,
+    config,
+    monitor,
+    narrate,
+    news,
+    seo,
+    sources,
+    thumbnail,
+    youtube,
+)
 
 config.ensure_dirs()
 
@@ -145,6 +155,22 @@ with st.expander("📊 Panorama de mercado — dados e notícias do dia"):
                     tickers, feed_url, brapi_token
                 )
             st.success("Contexto preenchido abaixo — revise antes de gerar.")
+        except Exception as exc:
+            st.error(str(exc))
+
+    st.markdown("**Ou importe uma exportação do seu monitor de BDRs (CSV/JSON):**")
+    st.caption(
+        "Gera um contexto **educativo agregado** (quantas BDRs caíram, IS médio, "
+        "sinais mais frequentes) — para explicar conceitos, **não** para publicar "
+        "a lista como recomendação de compra."
+    )
+    export_bdr = st.file_uploader("Exportação do monitor", type=["csv", "json"], key="bdr_up")
+    if export_bdr is not None and st.button("📥 Usar dados do monitor de BDRs"):
+        try:
+            st.session_state["contexto_mercado"] = monitor.contexto_de_arquivo(
+                export_bdr.getvalue(), export_bdr.name
+            )
+            st.success("Contexto do monitor preenchido abaixo — revise antes de gerar.")
         except Exception as exc:
             st.error(str(exc))
 

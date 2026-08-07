@@ -117,6 +117,17 @@ dele. Você também pode colar dados do seu monitor da B3 no mesmo campo.
 > Por decisão de projeto, o app **não** converte "ações com possibilidade de
 > compra" em recomendação pública.
 
+**Importar do monitor de BDRs:** no mesmo painel você pode subir uma exportação
+(CSV/JSON) do seu rastreador de quedas de BDRs. O app gera um **contexto
+educativo agregado** (quantas BDRs caíram, IS médio, sinais técnicos mais
+frequentes) para explicar **conceitos** — e, por decisão de projeto, **não**
+publica o ranking de oportunidades como recomendação de compra. Para exportar,
+adicione um botão no monitor, ex.:
+
+```python
+st.download_button("Baixar CSV", df_res.to_csv(index=False), "bdrs.csv")
+```
+
 ⚠️ Conteúdo financeiro é "YMYL" (o YouTube e os anunciantes são mais rígidos) e,
 no Brasil, recomendar compra/venda de ativos específicos ao público sem
 credenciamento pode esbarrar em regras da **CVM**. Prefira temas educativos
