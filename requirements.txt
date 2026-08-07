@@ -3,6 +3,7 @@ requests>=2.31
 anthropic>=0.40
 edge-tts>=6.1
 Pillow>=10.1
+feedparser>=6.0
 
 # Publicação no YouTube (API oficial) — opcional
 google-api-python-client>=2.100

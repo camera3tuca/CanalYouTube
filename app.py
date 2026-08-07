@@ -15,7 +15,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from canal import assemble, config, narrate, seo, sources, thumbnail, youtube
+from canal import assemble, config, narrate, news, seo, sources, thumbnail, youtube
 
 config.ensure_dirs()
 
@@ -125,17 +125,32 @@ if st.button("✍️ Gerar roteiro"):
     except Exception as exc:  # mostra o erro de forma amigável
         st.error(str(exc))
 
-with st.expander("📊 Panorama de mercado (a partir do seu monitor da B3)"):
+with st.expander("📊 Panorama de mercado — dados e notícias do dia"):
     st.caption(
-        "Cole aqui um resumo/JSON do seu monitor (ex.: variação do Ibovespa, "
-        "setores em alta/baixa, notícias). A IA gera um roteiro **educativo** — "
-        "**não** transforma 'ações com possibilidade de compra' em recomendação, "
-        "por causa das regras da CVM."
+        "Busca **fatos** (cotações da B3 via brapi.dev) e **manchetes** (só os "
+        "títulos, via RSS) e monta um contexto factual. A IA gera então um roteiro "
+        "**educativo** — não vira recomendação de compra (regras da CVM). "
+        "Você também pode colar dados do seu monitor da B3 direto no campo."
     )
+    coln1, coln2 = st.columns(2)
+    brapi_token = coln1.text_input("Token brapi.dev (opcional)", value=secret("BRAPI_TOKEN"), type="password")
+    feed_url = coln2.text_input("Feed RSS de notícias", value=list(news.FEEDS_SUGERIDOS.values())[0])
+    tickers_txt = st.text_input("Tickers para cotação (vírgula)", value="^BVSP, PETR4, VALE3, ITUB4")
+
+    if st.button("🔎 Buscar dados e notícias do dia"):
+        try:
+            tickers = [t.strip() for t in tickers_txt.split(",") if t.strip()]
+            with st.spinner("Buscando dados e manchetes..."):
+                st.session_state["contexto_mercado"] = news.montar_contexto_do_dia(
+                    tickers, feed_url, brapi_token
+                )
+            st.success("Contexto preenchido abaixo — revise antes de gerar.")
+        except Exception as exc:
+            st.error(str(exc))
+
+    st.session_state.setdefault("contexto_mercado", "")
     contexto_mercado = st.text_area(
-        "Contexto do mercado", height=140,
-        placeholder="Ibovespa fechou em alta de 0,8% aos 130.000 pontos. "
-        "Setor bancário puxou o índice; commodities recuaram. ...",
+        "Contexto do mercado (fatos + manchetes)", key="contexto_mercado", height=200
     )
     if st.button("📈 Gerar panorama educativo") and contexto_mercado.strip():
         try:
