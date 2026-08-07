@@ -2,10 +2,10 @@
 
 Fluxo:
     1. Buscar vídeos em fontes com licença livre (Pexels, Pixabay, Archive)
-    2. Baixar o clipe escolhido
-    3. Gerar o roteiro de narração com IA (Claude)
-    4. Sintetizar a voz (edge-tts)
-    5. Montar o vídeo final (ffmpeg)
+    2. Baixar o clipe + gerar roteiro (IA), inclusive panorama de mercado
+    3. Sintetizar voz + legendas sincronizadas (edge-tts)
+    4. Montar o vídeo final (ffmpeg): legendas, Shorts 9:16 e trilha
+    5. Gerar título, descrição e tags (SEO)
 
 Execute com:  streamlit run app.py
 """
@@ -15,7 +15,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from canal import assemble, config, narrate, sources
+from canal import assemble, config, narrate, seo, sources
 
 config.ensure_dirs()
 
@@ -115,6 +115,28 @@ if st.button("✍️ Gerar roteiro"):
     except Exception as exc:  # mostra o erro de forma amigável
         st.error(str(exc))
 
+with st.expander("📊 Panorama de mercado (a partir do seu monitor da B3)"):
+    st.caption(
+        "Cole aqui um resumo/JSON do seu monitor (ex.: variação do Ibovespa, "
+        "setores em alta/baixa, notícias). A IA gera um roteiro **educativo** — "
+        "**não** transforma 'ações com possibilidade de compra' em recomendação, "
+        "por causa das regras da CVM."
+    )
+    contexto_mercado = st.text_area(
+        "Contexto do mercado", height=140,
+        placeholder="Ibovespa fechou em alta de 0,8% aos 130.000 pontos. "
+        "Setor bancário puxou o índice; commodities recuaram. ...",
+    )
+    if st.button("📈 Gerar panorama educativo") and contexto_mercado.strip():
+        try:
+            with st.spinner("Escrevendo o panorama..."):
+                st.session_state["roteiro"] = narrate.gerar_panorama_educativo(
+                    contexto_mercado, int(duracao), anthropic_key, model=model
+                )
+            st.success("Panorama gerado — veja/edite no campo de roteiro abaixo.")
+        except Exception as exc:
+            st.error(str(exc))
+
 roteiro = st.text_area("Roteiro (edite à vontade)", value=st.session_state.get("roteiro", ""), height=200)
 st.session_state["roteiro"] = roteiro
 
@@ -149,9 +171,20 @@ if srt_path and Path(srt_path).exists():
 # 4. Montagem final
 # --------------------------------------------------------------------------- #
 st.subheader("4) Montar o vídeo final")
-col_m1, col_m2 = st.columns(2)
-manter = col_m1.checkbox("Manter áudio original do clipe (abaixado, como fundo)", value=True)
-queimar_legenda = col_m2.checkbox("Queimar legendas no vídeo", value=True)
+col_m1, col_m2, col_m3 = st.columns(3)
+manter = col_m1.checkbox("Manter áudio original (como fundo)", value=True)
+queimar_legenda = col_m2.checkbox("Queimar legendas", value=True)
+vertical = col_m3.checkbox("Formato Shorts (9:16)", value=False)
+
+musica_up = st.file_uploader(
+    "Trilha de fundo (opcional — use áudio livre, ex.: Biblioteca de Áudio do YouTube)",
+    type=["mp3", "wav", "m4a", "aac"],
+)
+musica_path = None
+if musica_up is not None:
+    musica_path = config.DOWNLOAD_DIR / f"trilha_{musica_up.name}"
+    musica_path.write_bytes(musica_up.getbuffer())
+
 if st.button("🎞️ Montar vídeo final"):
     if not (video_path and Path(video_path).exists()):
         st.error("Baixe um clipe primeiro (etapa 1).")
@@ -169,6 +202,8 @@ if st.button("🎞️ Montar vídeo final"):
                     config.OUTPUT_DIR / "video_final.mp4",
                     manter_audio_original=manter,
                     legenda=legenda,
+                    vertical=vertical,
+                    musica=musica_path,
                 )
             st.session_state["final_path"] = str(final)
             st.success("Pronto!")
@@ -186,5 +221,29 @@ if final_path and Path(final_path).exists():
     if educativo:
         descricao += f"\n{narrate.AVISO_FINANCEIRO}\n"
     if descricao:
-        st.caption("Sugestão de texto para a descrição do vídeo:")
+        st.caption("Crédito/aviso para colar na descrição do vídeo:")
         st.code(descricao, language="text")
+
+# --------------------------------------------------------------------------- #
+# 5. Metadados (SEO)
+# --------------------------------------------------------------------------- #
+st.subheader("5) Título, descrição e tags (SEO)")
+if st.button("🏷️ Gerar metadados") and roteiro.strip():
+    try:
+        with st.spinner("Otimizando para busca..."):
+            st.session_state["meta"] = seo.gerar_metadados(
+                tema_roteiro or query,
+                roteiro,
+                anthropic_key,
+                model=model,
+                aviso_financeiro=narrate.AVISO_FINANCEIRO if educativo else None,
+            )
+    except Exception as exc:
+        st.error(str(exc))
+
+meta = st.session_state.get("meta")
+if meta:
+    st.text_input("Título", value=meta.get("titulo", ""))
+    st.text_area("Descrição", value=meta.get("descricao", ""), height=160)
+    tags = meta.get("tags", [])
+    st.text_area("Tags (separadas por vírgula)", value=", ".join(tags), height=80)

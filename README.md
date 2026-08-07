@@ -60,6 +60,13 @@ Fluxo na interface:
 4. **Sintetizar a voz + legenda** (edge-tts, vozes pt-BR, `.srt` sincronizado).
 5. **Montar** o vídeo final (narração + legendas sobre as imagens) e baixar o `.mp4`.
 
+### Recursos extras
+
+- **Formato Shorts (9:16):** marque na etapa 4 para recorte vertical automático.
+- **Trilha de fundo:** envie um áudio livre na etapa 4 (entra em loop, volume baixo).
+- **SEO (etapa 5):** gera título, descrição e tags otimizados a partir do roteiro.
+- **Legendas:** `.srt` sincronizado com a fala, opcionalmente queimado no vídeo.
+
 ### Nicho financeiro (bolsa/investimentos)
 
 Marque **"Conteúdo financeiro educativo"** na etapa 3 para o nicho de bolsa.
@@ -67,10 +74,17 @@ Isso mantém o roteiro **didático e imparcial**, evita recomendar ativos
 específicos e adiciona automaticamente o aviso de que **não é recomendação de
 investimento**.
 
+**Panorama de mercado (monitor da B3):** no painel "Panorama de mercado" você
+cola um resumo/JSON do seu monitor (variação do índice, setores, notícias) e a
+IA gera um roteiro **educativo**. Por decisão de projeto, o app **não** converte
+"ações com possibilidade de compra" em recomendação pública.
+
 ⚠️ Conteúdo financeiro é "YMYL" (o YouTube e os anunciantes são mais rígidos) e,
-no Brasil, recomendar compra/venda de ativos específicos sem credenciamento pode
-esbarrar em regras da **CVM**. Prefira temas educativos ("como funciona o home
-broker", "o que é dividendo", "o que é o Ibovespa") com o aviso incluído.
+no Brasil, recomendar compra/venda de ativos específicos ao público sem
+credenciamento pode esbarrar em regras da **CVM**. Prefira temas educativos
+("como funciona o home broker", "o que é dividendo", "o que é o Ibovespa") com o
+aviso incluído. Use o monitor como fonte de **contexto e ideias**, não como
+lista de recomendações num vídeo.
 
 ## Estrutura
 

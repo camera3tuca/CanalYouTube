@@ -93,6 +93,63 @@ def gerar_roteiro(
     return texto
 
 
+def gerar_panorama_educativo(
+    contexto_mercado: str,
+    duracao_seg: int,
+    api_key: str,
+    model: str = DEFAULT_ANTHROPIC_MODEL,
+) -> str:
+    """Gera um roteiro EDUCATIVO de panorama de mercado.
+
+    `contexto_mercado` é texto/JSON livre com dados gerais (ex.: variação do
+    Ibovespa, setores em alta/baixa, notícias). Pode vir do seu monitor da B3.
+
+    Guardrails: o roteiro explica o que os movimentos significam de forma
+    didática e NÃO recomenda comprar/vender ativos específicos — mesmo que o
+    contexto traga "sinais de compra", eles são tratados apenas como exemplo de
+    como analistas leem o mercado, sempre com aviso de que não é recomendação.
+    """
+    if not api_key:
+        raise RuntimeError("Chave da API da Anthropic ausente (ANTHROPIC_API_KEY).")
+
+    import anthropic
+
+    client = anthropic.Anthropic(api_key=api_key)
+    palavras = max(60, int(duracao_seg / 60 * 150))
+
+    prompt = (
+        "Você faz um panorama EDUCATIVO do mercado financeiro brasileiro para o "
+        "YouTube. Use os dados abaixo apenas como contexto factual.\n\n"
+        f"DADOS DE CONTEXTO (do monitor da B3):\n{contexto_mercado[:4000]}\n\n"
+        f"Escreva ~{palavras} palavras (~{duracao_seg}s falados). Regras:\n"
+        "- Explique o que os movimentos gerais significam de forma didática.\n"
+        "- NÃO diga para o espectador comprar ou vender nenhum ativo específico.\n"
+        "- Se o contexto listar 'ações com possibilidade de compra', NÃO as "
+        "apresente como recomendação; no máximo explique, de forma genérica, "
+        "quais critérios costumam ser observados numa análise.\n"
+        "- NÃO prometa retornos.\n"
+        f"- Encerre com um aviso natural equivalente a: \"{AVISO_FINANCEIRO}\"\n"
+        "Devolva apenas o texto a ser narrado, sem títulos nem marcações."
+    )
+
+    response = client.messages.create(
+        model=model,
+        max_tokens=2000,
+        system=SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    if response.stop_reason == "refusal":
+        raise RuntimeError("O modelo recusou gerar este panorama. Ajuste o contexto.")
+
+    texto = "\n".join(
+        b.text for b in response.content if getattr(b, "type", None) == "text"
+    ).strip()
+    if not texto:
+        raise RuntimeError("O modelo não devolveu texto utilizável.")
+    return texto
+
+
 # --------------------------------------------------------------------------- #
 # TTS + legendas
 # --------------------------------------------------------------------------- #
