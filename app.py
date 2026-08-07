@@ -15,9 +15,19 @@ from pathlib import Path
 
 import streamlit as st
 
-from canal import assemble, config, narrate, seo, sources
+from canal import assemble, config, narrate, seo, sources, thumbnail, youtube
 
 config.ensure_dirs()
+
+
+def secret(name: str, default: str = "") -> str:
+    """Lê de st.secrets (Streamlit Cloud) e cai para variável de ambiente."""
+    try:
+        if name in st.secrets:
+            return str(st.secrets[name])
+    except Exception:
+        pass
+    return config.env(name, default)
 
 st.set_page_config(page_title="Canal — Pipeline de vídeos", page_icon="🎬", layout="wide")
 st.title("🎬 Pipeline de vídeos com licença livre + narração de IA")
@@ -31,9 +41,9 @@ st.caption(
 # --------------------------------------------------------------------------- #
 with st.sidebar:
     st.header("🔑 Chaves de API")
-    pexels_key = st.text_input("Pexels API key", value=config.env("PEXELS_API_KEY"), type="password")
-    pixabay_key = st.text_input("Pixabay API key", value=config.env("PIXABAY_API_KEY"), type="password")
-    anthropic_key = st.text_input("Anthropic API key", value=config.env("ANTHROPIC_API_KEY"), type="password")
+    pexels_key = st.text_input("Pexels API key", value=secret("PEXELS_API_KEY"), type="password")
+    pixabay_key = st.text_input("Pixabay API key", value=secret("PIXABAY_API_KEY"), type="password")
+    anthropic_key = st.text_input("Anthropic API key", value=secret("ANTHROPIC_API_KEY"), type="password")
     st.divider()
     st.header("⚙️ Opções")
     model = st.text_input("Modelo Claude", value=config.DEFAULT_ANTHROPIC_MODEL)
@@ -241,9 +251,82 @@ if st.button("🏷️ Gerar metadados") and roteiro.strip():
     except Exception as exc:
         st.error(str(exc))
 
-meta = st.session_state.get("meta")
-if meta:
-    st.text_input("Título", value=meta.get("titulo", ""))
-    st.text_area("Descrição", value=meta.get("descricao", ""), height=160)
-    tags = meta.get("tags", [])
-    st.text_area("Tags (separadas por vírgula)", value=", ".join(tags), height=80)
+meta = st.session_state.get("meta", {})
+titulo_final = st.text_input("Título", value=meta.get("titulo", tema_roteiro or query))
+descricao_final = st.text_area("Descrição", value=meta.get("descricao", ""), height=160)
+tags_txt = st.text_area(
+    "Tags (separadas por vírgula)", value=", ".join(meta.get("tags", [])), height=80
+)
+tags_final = [t.strip() for t in tags_txt.split(",") if t.strip()]
+
+# --------------------------------------------------------------------------- #
+# 6. Thumbnail (capa)
+# --------------------------------------------------------------------------- #
+st.subheader("6) Gerar thumbnail (capa)")
+titulo_thumb = st.text_input("Texto da capa", value=titulo_final)
+if st.button("🖼️ Gerar thumbnail"):
+    try:
+        base_video = final_path or video_path
+        with st.spinner("Criando capa..."):
+            thumb = thumbnail.gerar_thumbnail(
+                titulo_thumb,
+                config.OUTPUT_DIR / "thumbnail.png",
+                video=Path(base_video) if base_video and Path(base_video).exists() else None,
+            )
+        st.session_state["thumb_path"] = str(thumb)
+        st.success("Thumbnail gerada.")
+    except Exception as exc:
+        st.error(str(exc))
+
+thumb_path = st.session_state.get("thumb_path")
+if thumb_path and Path(thumb_path).exists():
+    st.image(thumb_path, caption="Prévia da thumbnail")
+    with open(thumb_path, "rb") as fh:
+        st.download_button("⬇️ Baixar thumbnail", fh, file_name="thumbnail.png", mime="image/png")
+
+# --------------------------------------------------------------------------- #
+# 7. Publicar no YouTube (API oficial)
+# --------------------------------------------------------------------------- #
+st.subheader("7) Publicar no YouTube")
+st.caption(
+    "Usa a API oficial do YouTube. No Streamlit Cloud, informe client_id, "
+    "client_secret e refresh_token (gerados uma vez — veja o README). "
+    "Comece sempre como **privado** para revisar antes de tornar público."
+)
+col_p1, col_p2 = st.columns(2)
+yt_client_id = col_p1.text_input("Client ID", value=secret("YOUTUBE_CLIENT_ID"), type="password")
+yt_client_secret = col_p2.text_input("Client Secret", value=secret("YOUTUBE_CLIENT_SECRET"), type="password")
+yt_refresh = st.text_input("Refresh token", value=secret("YOUTUBE_REFRESH_TOKEN"), type="password")
+privacidade = st.selectbox("Privacidade", ["private", "unlisted", "public"], index=0)
+
+if st.button("🚀 Enviar para o YouTube"):
+    if not (final_path and Path(final_path).exists()):
+        st.error("Monte o vídeo final primeiro (etapa 4).")
+    elif not (yt_client_id and yt_client_secret and yt_refresh):
+        st.error("Informe client_id, client_secret e refresh_token.")
+    else:
+        try:
+            with st.spinner("Autenticando e enviando..."):
+                servico = youtube.servico_por_refresh_token(
+                    yt_client_id, yt_client_secret, yt_refresh
+                )
+                resp = youtube.publicar(
+                    servico,
+                    Path(final_path),
+                    titulo_final,
+                    descricao_final,
+                    tags=tags_final,
+                    privacidade=privacidade,
+                )
+                video_id = resp.get("id")
+                if thumb_path and Path(thumb_path).exists() and video_id:
+                    try:
+                        youtube.definir_thumbnail(servico, video_id, Path(thumb_path))
+                    except Exception as exc_t:  # thumbnail exige canal verificado
+                        st.warning(f"Vídeo enviado, mas a thumbnail falhou: {exc_t}")
+            if video_id:
+                st.success(f"Publicado! {youtube.url_do_video(video_id)}")
+            else:
+                st.warning("Envio concluído, mas não recebi o ID do vídeo.")
+        except Exception as exc:
+            st.error(f"Falha na publicação: {exc}")

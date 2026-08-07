@@ -65,7 +65,38 @@ Fluxo na interface:
 - **Formato Shorts (9:16):** marque na etapa 4 para recorte vertical automático.
 - **Trilha de fundo:** envie um áudio livre na etapa 4 (entra em loop, volume baixo).
 - **SEO (etapa 5):** gera título, descrição e tags otimizados a partir do roteiro.
+- **Thumbnail (etapa 6):** capa 1280×720 com o texto do título sobre um quadro do vídeo.
+- **Publicar (etapa 7):** envio direto ao YouTube via API oficial (começa como privado).
 - **Legendas:** `.srt` sincronizado com a fala, opcionalmente queimado no vídeo.
+
+## Rodar no Streamlit Cloud
+
+1. Suba este repositório e aponte o app para `app.py`.
+2. O `packages.txt` já instala o **ffmpeg** no ambiente.
+3. Em **Settings > Secrets**, cole o conteúdo de `.streamlit/secrets.toml.example`
+   preenchido com suas chaves.
+
+## Publicar no YouTube (API oficial)
+
+1. No [Google Cloud Console](https://console.cloud.google.com/): crie um projeto,
+   ative a **YouTube Data API v3** e gere uma credencial **OAuth (App para computador)**.
+   Baixe o `client_secret.json`.
+2. **Uma vez, na sua máquina**, gere o `refresh_token` (o servidor do Streamlit
+   Cloud não abre navegador):
+
+   ```python
+   from google_auth_oauthlib.flow import InstalledAppFlow
+   flow = InstalledAppFlow.from_client_secrets_file(
+       "client_secret.json", ["https://www.googleapis.com/auth/youtube.upload"])
+   creds = flow.run_local_server(port=0)
+   print("REFRESH TOKEN:", creds.refresh_token)
+   ```
+
+3. Guarde `client_id`, `client_secret` e `refresh_token` nos *secrets* do Streamlit
+   (chaves `YOUTUBE_*` do exemplo). A etapa 7 do app usa esses valores.
+
+> Comece sempre com privacidade **privada** para revisar o vídeo antes de publicar.
+> Definir thumbnail pela API exige canal verificado.
 
 ### Nicho financeiro (bolsa/investimentos)
 
