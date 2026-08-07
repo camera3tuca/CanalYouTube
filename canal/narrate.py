@@ -1,9 +1,10 @@
-"""Geração de roteiro (IA) e narração (TTS).
+"""Geração de roteiro (IA), narração (TTS) e legendas sincronizadas.
 
 - gerar_roteiro(): usa a API da Anthropic (Claude) para escrever o texto que
-  transforma o vídeo em conteúdo original (comentário, curiosidades, história).
-- sintetizar_voz(): converte o texto em áudio com o edge-tts (gratuito, offline
-  quanto a chave, mas requer acesso à internet).
+  transforma o vídeo em conteúdo original (comentário, curiosidades, aula).
+- sintetizar_voz(): converte o texto em áudio com o edge-tts.
+- sintetizar_com_legendas(): gera o áudio E um arquivo .srt sincronizado,
+  usando os eventos de limite de palavra do edge-tts.
 """
 from __future__ import annotations
 
@@ -12,6 +13,10 @@ from pathlib import Path
 
 from .config import DEFAULT_ANTHROPIC_MODEL
 
+AVISO_FINANCEIRO = (
+    "Este conteúdo é educativo e informativo e não constitui recomendação de "
+    "investimento. Consulte um profissional certificado antes de investir."
+)
 
 SYSTEM_PROMPT = (
     "Você é roteirista de um canal de YouTube em português do Brasil. "
@@ -27,8 +32,14 @@ def gerar_roteiro(
     estilo: str,
     api_key: str,
     model: str = DEFAULT_ANTHROPIC_MODEL,
+    educativo_financeiro: bool = False,
 ) -> str:
     """Gera o texto da narração via API da Anthropic.
+
+    Se educativo_financeiro=True, instrui o modelo a manter o conteúdo
+    educativo, evitar recomendações de ativos específicos e encerrar com um
+    aviso de que não é recomendação de investimento (importante para o nicho
+    de bolsa: mais seguro para monetização e para as regras da CVM).
 
     Levanta RuntimeError se a chave faltar ou se o modelo recusar o conteúdo.
     """
@@ -42,13 +53,24 @@ def gerar_roteiro(
     # ~150 palavras por minuto de narração é uma média confortável em pt-BR.
     palavras = max(40, int(duracao_seg / 60 * 150))
 
+    regras_financeiras = ""
+    if educativo_financeiro:
+        regras_financeiras = (
+            "\nEste é um vídeo EDUCATIVO sobre mercado financeiro. Regras obrigatórias:\n"
+            "- Explique conceitos de forma didática e imparcial.\n"
+            "- NÃO recomende comprar ou vender ativos específicos, nem prometa retornos.\n"
+            "- NÃO dê conselho financeiro personalizado.\n"
+            f"- Encerre com um aviso curto e natural equivalente a: \"{AVISO_FINANCEIRO}\"\n"
+        )
+
     prompt = (
         f"Escreva uma narração de aproximadamente {palavras} palavras "
         f"(~{duracao_seg} segundos falados) sobre o tema: \"{tema}\".\n"
         f"Estilo/tom: {estilo}.\n"
         "A narração deve ter começo, meio e fim, prender a atenção nos "
-        "primeiros segundos e terminar com uma chamada para se inscrever no canal. "
-        "Devolva apenas o texto a ser narrado, sem títulos nem instruções de cena."
+        "primeiros segundos e terminar com uma chamada para se inscrever no canal."
+        f"{regras_financeiras}"
+        "\nDevolva apenas o texto a ser narrado, sem títulos nem instruções de cena."
     )
 
     response = client.messages.create(
@@ -71,15 +93,95 @@ def gerar_roteiro(
     return texto
 
 
-async def _tts(texto: str, voz: str, destino: Path) -> None:
+# --------------------------------------------------------------------------- #
+# TTS + legendas
+# --------------------------------------------------------------------------- #
+def _srt_time(ticks_100ns: int) -> str:
+    """Converte ticks de 100 ns (formato do edge-tts) para 'HH:MM:SS,mmm'."""
+    total = ticks_100ns / 10_000_000  # segundos
+    h = int(total // 3600)
+    m = int((total % 3600) // 60)
+    s = int(total % 60)
+    ms = int(round((total - int(total)) * 1000))
+    if ms == 1000:  # arredondamento
+        s, ms = s + 1, 0
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+def _srt_de_palavras(palavras: list[dict], por_cue: int = 8) -> str:
+    """Monta um SRT agrupando palavras em blocos curtos.
+
+    Cada palavra é um dict com 'offset', 'duration' (ticks de 100 ns) e 'text'.
+    Fecha o bloco a cada `por_cue` palavras ou quando a palavra termina frase.
+    """
+    cues: list[tuple[int, int, str]] = []
+    buffer: list[dict] = []
+
+    def fecha():
+        if not buffer:
+            return
+        inicio = buffer[0]["offset"]
+        fim = buffer[-1]["offset"] + buffer[-1]["duration"]
+        texto = " ".join(p["text"] for p in buffer)
+        cues.append((inicio, fim, texto))
+        buffer.clear()
+
+    for p in palavras:
+        buffer.append(p)
+        termina_frase = p["text"].endswith((".", "!", "?", "…"))
+        if len(buffer) >= por_cue or termina_frase:
+            fecha()
+    fecha()
+
+    linhas = []
+    for i, (inicio, fim, texto) in enumerate(cues, start=1):
+        linhas.append(str(i))
+        linhas.append(f"{_srt_time(inicio)} --> {_srt_time(fim)}")
+        linhas.append(texto)
+        linhas.append("")
+    return "\n".join(linhas)
+
+
+async def _tts_stream(texto: str, voz: str, destino_audio: Path) -> list[dict]:
+    """Gera o áudio e devolve a lista de limites de palavra (WordBoundary)."""
     import edge_tts
 
+    palavras: list[dict] = []
     communicate = edge_tts.Communicate(texto, voz)
-    await communicate.save(str(destino))
+    with open(destino_audio, "wb") as fh:
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                fh.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                palavras.append(
+                    {
+                        "offset": chunk["offset"],
+                        "duration": chunk["duration"],
+                        "text": chunk["text"],
+                    }
+                )
+    return palavras
+
+
+def sintetizar_com_legendas(
+    texto: str, voz: str, destino_audio: Path, destino_srt: Path
+) -> tuple[Path, Path]:
+    """Gera o áudio (mp3) e um .srt sincronizado a partir do texto."""
+    destino_audio.parent.mkdir(parents=True, exist_ok=True)
+    palavras = asyncio.run(_tts_stream(texto, voz, destino_audio))
+    srt = _srt_de_palavras(palavras)
+    destino_srt.write_text(srt, encoding="utf-8")
+    return destino_audio, destino_srt
 
 
 def sintetizar_voz(texto: str, voz: str, destino: Path) -> Path:
-    """Gera um arquivo de áudio (mp3) a partir do texto usando edge-tts."""
+    """Gera apenas o áudio (mp3), sem legendas."""
     destino.parent.mkdir(parents=True, exist_ok=True)
-    asyncio.run(_tts(texto, voz, destino))
+
+    async def _run():
+        import edge_tts
+
+        await edge_tts.Communicate(texto, voz).save(str(destino))
+
+    asyncio.run(_run())
     return destino

@@ -32,17 +32,27 @@ def duracao_seg(caminho: Path) -> float:
         return 0.0
 
 
+def _escapa_legenda(caminho: Path) -> str:
+    """Escapa o caminho para uso no filtro `subtitles` do ffmpeg."""
+    p = str(caminho)
+    # o filtro usa ':' e '\\' como especiais; escapamos para funcionar
+    p = p.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+    return p
+
+
 def montar(
     video: Path,
     narracao: Path,
     saida: Path,
     manter_audio_original: bool = True,
     volume_original: float = 0.15,
+    legenda: Path | None = None,
 ) -> Path:
-    """Sobrepõe a narração ao vídeo.
+    """Sobrepõe a narração ao vídeo e, opcionalmente, queima legendas.
 
     O vídeo é cortado/estendido para acompanhar a duração da narração:
     se a narração for mais longa que o vídeo, o vídeo entra em loop.
+    Se `legenda` for um .srt, as legendas são gravadas na imagem.
     """
     if not ffmpeg_disponivel():
         raise RuntimeError(
@@ -55,15 +65,36 @@ def montar(
 
     cmd = ["ffmpeg", "-y", "-stream_loop", "-1", "-i", str(video), "-i", str(narracao)]
 
+    # filtro de vídeo: queima legendas se houver
+    vfilters = []
+    if legenda is not None and Path(legenda).exists():
+        estilo = "FontSize=20,Outline=2,Shadow=0,Alignment=2,MarginV=40"
+        vfilters.append(f"subtitles='{_escapa_legenda(Path(legenda))}':force_style='{estilo}'")
+
     if manter_audio_original:
-        # mistura áudio original (abaixado) + narração
-        filtro = (
+        af = (
             f"[0:a]volume={volume_original}[orig];"
             "[orig][1:a]amix=inputs=2:duration=longest:dropout_transition=0[aout]"
         )
-        cmd += ["-filter_complex", filtro, "-map", "0:v:0", "-map", "[aout]"]
     else:
-        cmd += ["-map", "0:v:0", "-map", "1:a:0"]
+        af = None
+
+    # monta filter_complex combinando vídeo (com legenda) e áudio
+    partes = []
+    if vfilters:
+        partes.append(f"[0:v]{','.join(vfilters)}[vout]")
+        vmap = "[vout]"
+    else:
+        vmap = "0:v:0"
+    if af:
+        partes.append(af)
+        amap = "[aout]"
+    else:
+        amap = "1:a:0" if not manter_audio_original else "1:a:0"
+
+    if partes:
+        cmd += ["-filter_complex", ";".join(partes)]
+    cmd += ["-map", vmap, "-map", amap]
 
     # termina quando a narração termina
     if dur_narracao > 0:

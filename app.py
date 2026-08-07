@@ -92,11 +92,25 @@ tema_roteiro = col_a.text_input("Tema da narração", value=query or "")
 duracao = col_b.number_input("Duração alvo (segundos)", min_value=15, max_value=600, value=60, step=15)
 estilo = col_c.text_input("Estilo/tom", value="curiosidades, informativo e leve")
 
+educativo = st.checkbox(
+    "📈 Conteúdo financeiro educativo (bolsa/investimentos)",
+    value=False,
+    help="Mantém o roteiro didático, evita recomendar ativos específicos e "
+    "adiciona um aviso de que não é recomendação de investimento (nicho YMYL).",
+)
+if educativo:
+    st.caption(
+        "Sugestões de tema seguras: *como funciona o home broker*, *o que é um "
+        "dividendo*, *o que é o Ibovespa*, *renda fixa x renda variável*, "
+        "*o que é um ETF*. Evite \"qual ação comprar agora\"."
+    )
+
 if st.button("✍️ Gerar roteiro"):
     try:
         with st.spinner("Escrevendo o roteiro..."):
             st.session_state["roteiro"] = narrate.gerar_roteiro(
-                tema_roteiro, int(duracao), estilo, anthropic_key, model=model
+                tema_roteiro, int(duracao), estilo, anthropic_key,
+                model=model, educativo_financeiro=educativo,
             )
     except Exception as exc:  # mostra o erro de forma amigável
         st.error(str(exc))
@@ -107,33 +121,46 @@ st.session_state["roteiro"] = roteiro
 # --------------------------------------------------------------------------- #
 # 3. Narração (TTS)
 # --------------------------------------------------------------------------- #
-st.subheader("3) Sintetizar a narração (voz)")
-if st.button("🔊 Gerar áudio da narração") and roteiro.strip():
+st.subheader("3) Sintetizar a narração (voz) + legendas")
+if st.button("🔊 Gerar áudio + legenda") and roteiro.strip():
     try:
-        with st.spinner("Gerando voz..."):
-            audio_path = narrate.sintetizar_voz(
-                roteiro, voz, config.OUTPUT_DIR / "narracao.mp3"
+        with st.spinner("Gerando voz e legendas sincronizadas..."):
+            audio_path, srt_path = narrate.sintetizar_com_legendas(
+                roteiro,
+                voz,
+                config.OUTPUT_DIR / "narracao.mp3",
+                config.OUTPUT_DIR / "narracao.srt",
             )
         st.session_state["audio_path"] = str(audio_path)
-        st.success("Narração gerada.")
+        st.session_state["srt_path"] = str(srt_path)
+        st.success("Narração e legenda (.srt) geradas.")
     except Exception as exc:
         st.error(str(exc))
 
 audio_path = st.session_state.get("audio_path")
 if audio_path and Path(audio_path).exists():
     st.audio(audio_path)
+srt_path = st.session_state.get("srt_path")
+if srt_path and Path(srt_path).exists():
+    with open(srt_path, "rb") as fh:
+        st.download_button("⬇️ Baixar legenda (.srt)", fh, file_name="narracao.srt")
 
 # --------------------------------------------------------------------------- #
 # 4. Montagem final
 # --------------------------------------------------------------------------- #
 st.subheader("4) Montar o vídeo final")
-manter = st.checkbox("Manter áudio original do clipe (abaixado, como fundo)", value=True)
+col_m1, col_m2 = st.columns(2)
+manter = col_m1.checkbox("Manter áudio original do clipe (abaixado, como fundo)", value=True)
+queimar_legenda = col_m2.checkbox("Queimar legendas no vídeo", value=True)
 if st.button("🎞️ Montar vídeo final"):
     if not (video_path and Path(video_path).exists()):
         st.error("Baixe um clipe primeiro (etapa 1).")
     elif not (audio_path and Path(audio_path).exists()):
         st.error("Gere a narração primeiro (etapa 3).")
     else:
+        legenda = None
+        if queimar_legenda and srt_path and Path(srt_path).exists():
+            legenda = Path(srt_path)
         try:
             with st.spinner("Montando com ffmpeg..."):
                 final = assemble.montar(
@@ -141,6 +168,7 @@ if st.button("🎞️ Montar vídeo final"):
                     Path(audio_path),
                     config.OUTPUT_DIR / "video_final.mp4",
                     manter_audio_original=manter,
+                    legenda=legenda,
                 )
             st.session_state["final_path"] = str(final)
             st.success("Pronto!")
@@ -152,8 +180,11 @@ if final_path and Path(final_path).exists():
     st.video(final_path)
     with open(final_path, "rb") as fh:
         st.download_button("⬇️ Baixar vídeo final", fh, file_name="video_final.mp4", mime="video/mp4")
+    descricao = ""
     if st.session_state.get("credito"):
-        st.caption(
-            "Lembre-se de creditar a fonte na descrição do vídeo:\n\n"
-            f"> Imagens: {st.session_state['credito']}"
-        )
+        descricao += f"Imagens: {st.session_state['credito']}\n"
+    if educativo:
+        descricao += f"\n{narrate.AVISO_FINANCEIRO}\n"
+    if descricao:
+        st.caption("Sugestão de texto para a descrição do vídeo:")
+        st.code(descricao, language="text")

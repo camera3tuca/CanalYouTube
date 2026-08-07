@@ -57,8 +57,20 @@ Fluxo na interface:
 1. **Buscar** vídeos por tema nas fontes com licença livre.
 2. **Baixar** o clipe escolhido.
 3. **Gerar o roteiro** de narração com IA (edite à vontade).
-4. **Sintetizar a voz** (edge-tts, vozes pt-BR).
-5. **Montar** o vídeo final (narração sobre as imagens) e baixar o `.mp4`.
+4. **Sintetizar a voz + legenda** (edge-tts, vozes pt-BR, `.srt` sincronizado).
+5. **Montar** o vídeo final (narração + legendas sobre as imagens) e baixar o `.mp4`.
+
+### Nicho financeiro (bolsa/investimentos)
+
+Marque **"Conteúdo financeiro educativo"** na etapa 3 para o nicho de bolsa.
+Isso mantém o roteiro **didático e imparcial**, evita recomendar ativos
+específicos e adiciona automaticamente o aviso de que **não é recomendação de
+investimento**.
+
+⚠️ Conteúdo financeiro é "YMYL" (o YouTube e os anunciantes são mais rígidos) e,
+no Brasil, recomendar compra/venda de ativos específicos sem credenciamento pode
+esbarrar em regras da **CVM**. Prefira temas educativos ("como funciona o home
+broker", "o que é dividendo", "o que é o Ibovespa") com o aviso incluído.
 
 ## Estrutura
 
