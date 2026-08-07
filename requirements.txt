@@ -1,0 +1,10 @@
+streamlit>=1.36
+requests>=2.31
+anthropic>=0.40
+edge-tts>=6.1
+Pillow>=10.1
+
+# Publicação no YouTube (API oficial) — opcional
+google-api-python-client>=2.100
+google-auth-oauthlib>=1.2
+google-auth-httplib2>=0.2
