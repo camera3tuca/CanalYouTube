@@ -105,10 +105,28 @@ Isso mantém o roteiro **didático e imparcial**, evita recomendar ativos
 específicos e adiciona automaticamente o aviso de que **não é recomendação de
 investimento**.
 
-**Panorama de mercado (monitor da B3):** no painel "Panorama de mercado" você
-cola um resumo/JSON do seu monitor (variação do índice, setores, notícias) e a
-IA gera um roteiro **educativo**. Por decisão de projeto, o app **não** converte
-"ações com possibilidade de compra" em recomendação pública.
+**Panorama de mercado (dados e notícias do dia):** no painel "Panorama de
+mercado" o app busca **fatos** (cotações da B3 via [brapi.dev](https://brapi.dev),
+chave gratuita) e **manchetes** (só os títulos, via RSS de portais que oferecem
+feed) e monta um contexto factual; a IA gera um roteiro **educativo** a partir
+dele. Você também pode colar dados do seu monitor da B3 no mesmo campo.
+
+> ⚠️ **Não faça scraping de portais como TradingView/Investing** — o conteúdo é
+> protegido e os Termos de Uso proíbem cópia/redistribuição. Fatos (números) e
+> manchetes (títulos + link) são fontes legítimas; o texto dos artigos, não.
+> Por decisão de projeto, o app **não** converte "ações com possibilidade de
+> compra" em recomendação pública.
+
+**Importar do monitor de BDRs:** no mesmo painel você pode subir uma exportação
+(CSV/JSON) do seu rastreador de quedas de BDRs. O app gera um **contexto
+educativo agregado** (quantas BDRs caíram, IS médio, sinais técnicos mais
+frequentes) para explicar **conceitos** — e, por decisão de projeto, **não**
+publica o ranking de oportunidades como recomendação de compra. Para exportar,
+adicione um botão no monitor, ex.:
+
+```python
+st.download_button("Baixar CSV", df_res.to_csv(index=False), "bdrs.csv")
+```
 
 ⚠️ Conteúdo financeiro é "YMYL" (o YouTube e os anunciantes são mais rígidos) e,
 no Brasil, recomendar compra/venda de ativos específicos ao público sem
